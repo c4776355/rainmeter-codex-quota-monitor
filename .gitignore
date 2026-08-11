@@ -1,0 +1,21 @@
+# Build outputs
+dist/
+*.rmskin
+*.zip
+
+# Generated native binaries
+**/CodexQuotaAgent.exe
+**/SessionEventScanner.dll
+*.pdb
+
+# Runtime state
+**/@Resources/Data/
+**/DynamicState.ini
+**/*.token
+*.log
+
+# Local tooling
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
