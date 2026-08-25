@@ -10,6 +10,7 @@ An unofficial, task-aware Rainmeter dashboard for viewing the quota reported by 
 
 - Refreshes immediately when a Codex task starts, then every 20 seconds while a task remains active.
 - Performs one final refresh on completion and enters a static `SILENT` state with no remote polling.
+- Adds a bottom-row `QUIET / RESUME` control beside `TOP OFF / TOP ON` to pause polling and breathing during an active task.
 - Shows remaining quota, reset countdown, restore date and time, plan, and active-query countdown.
 - Uses a full-edge breathing animation only while active or syncing.
 - Includes a persistent `TOP OFF / TOP ON` switch for normal or stay-topmost window behavior.
@@ -36,11 +37,14 @@ Glacier starts in the normal window layer (`TOP OFF`), allowing games and other 
 | State | Remote refresh | Animation |
 | --- | --- | --- |
 | `TASK ACTIVE` | Immediately, then every 20 seconds | Breathing and scan effects |
+| `QUIET` | None until resumed or the task ends | Static; task monitoring stays active |
 | `SYNCING` | One request in progress | Stronger breathing |
 | `SILENT` | None | Static |
 | Manual `SYNC` | One request | Sync animation |
 
 The lightweight native listener watches local task lifecycle events and reuses a local `codex app-server` process only while a task is active. It stops the helper process when returning to `SILENT`.
+
+The `QUIET` button is scoped to the current active-task period. `RESUME` performs an immediate refresh and restores the 20-second cadence; when the last active task ends, quiet mode clears automatically and the normal final snapshot runs. If the skin or listener restarts while that task is still active, the applied quiet state is restored without replaying an already-consumed stale token.
 
 ## Privacy
 

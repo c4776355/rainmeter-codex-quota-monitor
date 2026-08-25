@@ -23,6 +23,7 @@ namespace CodexQuota
                     Required(options, "state"),
                     Required(options, "stop"),
                     Required(options, "sync"),
+                    Required(options, "quiet"),
                     Value(options, "sessions", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "sessions")),
                     Integer(options, "interval", 20),
                     Integer(options, "timeout", 12000),
@@ -84,12 +85,14 @@ namespace CodexQuota
             "Schema", "AgentPid", "AgentHeartbeat", "Mode", "StatusText", "StatusDetail",
             "ActiveCount", "NextSyncAt", "LastSyncAt", "LastUpdated", "Remaining", "Used",
             "Window", "Reset", "ResetEpoch", "Plan", "Credits", "LimitId", "Aux",
-            "QuotaState", "LimitError", "LastError", "ConsecutiveErrors", "LastSyncRequestToken"
+            "QuotaState", "LimitError", "LastError", "ConsecutiveErrors", "ManualSilent",
+            "LastSyncRequestToken", "LastQuietRequestToken"
         };
 
         private readonly string statePath;
         private readonly string stopTokenPath;
         private readonly string syncTokenPath;
+        private readonly string quietTokenPath;
         private readonly string sessionsRoot;
         private readonly int intervalSeconds;
         private readonly int timeoutMs;
@@ -102,6 +105,7 @@ namespace CodexQuota
         private AppServerClient appServer;
         private bool pendingImmediateSync;
         private bool pendingFinalSync;
+        private bool manualSilent;
         private bool baselineScan;
         private readonly long bootTimeUnix;
 
@@ -109,6 +113,7 @@ namespace CodexQuota
             string statePath,
             string stopTokenPath,
             string syncTokenPath,
+            string quietTokenPath,
             string sessionsRoot,
             int intervalSeconds,
             int timeoutMs,
@@ -118,6 +123,7 @@ namespace CodexQuota
             this.statePath = statePath;
             this.stopTokenPath = stopTokenPath;
             this.syncTokenPath = syncTokenPath;
+            this.quietTokenPath = quietTokenPath;
             this.sessionsRoot = Path.GetFullPath(sessionsRoot);
             this.intervalSeconds = Math.Max(10, Math.Min(300, intervalSeconds));
             this.timeoutMs = Math.Max(3000, Math.Min(60000, timeoutMs));
@@ -149,6 +155,7 @@ namespace CodexQuota
 
                     string initialStopToken = ReadToken(stopTokenPath);
                     string lastSyncToken = Get("LastSyncRequestToken", "--");
+                    string lastQuietToken = Get("LastQuietRequestToken", "--");
                     Set("Mode", "STARTING");
                     Set("StatusText", "STARTING");
                     Set("StatusDetail", "SCANNING TASKS");
@@ -203,18 +210,33 @@ namespace CodexQuota
                                 Set("LastSyncRequestToken", currentSyncToken);
                             }
 
+                            string currentQuietToken = ReadToken(quietTokenPath);
+                            if (!String.Equals(currentQuietToken, lastQuietToken, StringComparison.Ordinal))
+                            {
+                                lastQuietToken = currentQuietToken;
+                                Set("LastQuietRequestToken", currentQuietToken);
+                                ApplyQuietRequest(currentQuietToken);
+                            }
+
+                            if (manualSilent && activeTurns.Count == 0)
+                            {
+                                manualSilent = false;
+                                Set("ManualSilent", "0");
+                                SetModeFromActivity();
+                            }
+
                             if (pendingFinalSync && activeTurns.Count == 0)
                             {
                                 pendingFinalSync = false;
                                 pendingImmediateSync = false;
                                 SyncQuota("FINAL SNAPSHOT");
                             }
-                            else if (pendingImmediateSync)
+                            else if (pendingImmediateSync && !manualSilent)
                             {
                                 pendingImmediateSync = false;
                                 SyncQuota("TASK START");
                             }
-                            else if (pendingFinalSync)
+                            else if (pendingFinalSync && !manualSilent)
                             {
                                 pendingFinalSync = false;
                                 SyncQuota("FINAL SNAPSHOT");
@@ -223,9 +245,18 @@ namespace CodexQuota
                             {
                                 SyncQuota("MANUAL REQUEST");
                             }
-                            else if (activeTurns.Count > 0 && Long("NextSyncAt", 0) > 0 && UnixNow() >= Long("NextSyncAt", 0))
+                            else if (!manualSilent && activeTurns.Count > 0 && Long("NextSyncAt", 0) > 0 && UnixNow() >= Long("NextSyncAt", 0))
                             {
                                 SyncQuota("20S ACTIVE CYCLE");
+                            }
+
+                            if (manualSilent)
+                            {
+                                pendingImmediateSync = false;
+                                if (activeTurns.Count > 0)
+                                {
+                                    pendingFinalSync = false;
+                                }
                             }
 
                             if (nowUtc >= nextHeartbeat)
@@ -285,7 +316,19 @@ namespace CodexQuota
 
         private void InitializeState()
         {
-            Set("Schema", "3");
+            Dictionary<string, string> existing = ReadKeyValueFile(statePath);
+            string currentQuietToken = ReadToken(quietTokenPath);
+            string previousQuietToken;
+            string previousManualSilent;
+            bool quietRequested;
+            bool hasQuietRequest = TryParseQuietRequest(currentQuietToken, out quietRequested);
+            bool quietRequestPending = !existing.TryGetValue("LastQuietRequestToken", out previousQuietToken) ||
+                                       !String.Equals(currentQuietToken, previousQuietToken, StringComparison.Ordinal);
+            bool wasManualSilent = existing.TryGetValue("ManualSilent", out previousManualSilent) &&
+                                   String.Equals(previousManualSilent, "1", StringComparison.Ordinal);
+            manualSilent = hasQuietRequest && quietRequested && (quietRequestPending || wasManualSilent);
+
+            Set("Schema", "4");
             Set("AgentPid", Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture));
             Set("AgentHeartbeat", UnixNow().ToString(CultureInfo.InvariantCulture));
             Set("Mode", "STARTING");
@@ -308,9 +351,10 @@ namespace CodexQuota
             Set("LimitError", "--");
             Set("LastError", "--");
             Set("ConsecutiveErrors", "0");
+            Set("ManualSilent", manualSilent ? "1" : "0");
             Set("LastSyncRequestToken", "--");
+            Set("LastQuietRequestToken", currentQuietToken);
 
-            Dictionary<string, string> existing = ReadKeyValueFile(statePath);
             string[] cachedKeys =
             {
                 "LastSyncAt", "LastUpdated", "Remaining", "Used", "Window", "Reset", "ResetEpoch",
@@ -330,17 +374,59 @@ namespace CodexQuota
         {
             if (activeTurns.Count > 0)
             {
-                Set("Mode", "ACTIVE");
-                Set("StatusText", "TASK ACTIVE");
-                Set("StatusDetail", String.Format(CultureInfo.InvariantCulture, "{0} LIVE TURN{1}", activeTurns.Count, activeTurns.Count == 1 ? "" : "S"));
+                if (manualSilent)
+                {
+                    Set("Mode", "PAUSED");
+                    Set("StatusText", "QUIET");
+                    Set("StatusDetail", String.Format(CultureInfo.InvariantCulture, "{0} LIVE TURN{1} / MUTED", activeTurns.Count, activeTurns.Count == 1 ? "" : "S"));
+                    Set("NextSyncAt", "0");
+                    Set("ManualSilent", "1");
+                }
+                else
+                {
+                    Set("Mode", "ACTIVE");
+                    Set("StatusText", "TASK ACTIVE");
+                    Set("StatusDetail", String.Format(CultureInfo.InvariantCulture, "{0} LIVE TURN{1}", activeTurns.Count, activeTurns.Count == 1 ? "" : "S"));
+                    Set("ManualSilent", "0");
+                }
             }
             else
             {
+                manualSilent = false;
                 Set("Mode", "SILENT");
                 Set("StatusText", "SILENT");
                 Set("StatusDetail", "NO ACTIVE TASK");
                 Set("NextSyncAt", "0");
+                Set("ManualSilent", "0");
             }
+        }
+
+        private void ApplyQuietRequest(string token)
+        {
+            bool requested;
+            if (!TryParseQuietRequest(token, out requested))
+            {
+                return;
+            }
+
+            if (requested && activeTurns.Count > 0)
+            {
+                manualSilent = true;
+                pendingImmediateSync = false;
+                pendingFinalSync = false;
+                StopAppServer();
+            }
+            else if (!requested && manualSilent)
+            {
+                manualSilent = false;
+                if (activeTurns.Count > 0)
+                {
+                    pendingImmediateSync = true;
+                }
+            }
+
+            SetModeFromActivity();
+            WriteState(false);
         }
 
         private void SyncQuota(string reason)
@@ -366,7 +452,7 @@ namespace CodexQuota
                 Set("LastError", "--");
                 Set("ConsecutiveErrors", "0");
                 SetModeFromActivity();
-                if (activeTurns.Count > 0)
+                if (activeTurns.Count > 0 && !manualSilent)
                 {
                     Set("NextSyncAt", (now + intervalSeconds).ToString(CultureInfo.InvariantCulture));
                 }
@@ -380,7 +466,7 @@ namespace CodexQuota
                 Set("StatusText", activeTurns.Count > 0 ? "RETRYING" : "OFFLINE");
                 Set("LastError", SafeValue(error.Message, 240));
 
-                if (activeTurns.Count > 0)
+                if (activeTurns.Count > 0 && !manualSilent)
                 {
                     int[] delays = { 60, 120, 300 };
                     int backoff = delays[Math.Min(errors - 1, delays.Length - 1)];
@@ -393,6 +479,13 @@ namespace CodexQuota
                     Set("StatusDetail", "BACKOFF " + backoff.ToString(CultureInfo.InvariantCulture) + "S");
                     Set("NextSyncAt", (UnixNow() + backoff).ToString(CultureInfo.InvariantCulture));
                 }
+                else if (manualSilent && activeTurns.Count > 0)
+                {
+                    Set("Mode", "PAUSED");
+                    Set("StatusText", "QUIET");
+                    Set("StatusDetail", "MANUAL SYNC FAILED");
+                    Set("NextSyncAt", "0");
+                }
                 else
                 {
                     Set("StatusDetail", "MANUAL SYNC FAILED");
@@ -401,7 +494,7 @@ namespace CodexQuota
             }
 
             WriteState(false);
-            if (activeTurns.Count == 0)
+            if (activeTurns.Count == 0 || manualSilent)
             {
                 StopAppServer();
             }
@@ -635,6 +728,25 @@ namespace CodexQuota
             {
                 return "--";
             }
+        }
+
+        private static bool TryParseQuietRequest(string token, out bool requested)
+        {
+            requested = false;
+            if (String.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+            if (token.StartsWith("QUIET=1|", StringComparison.OrdinalIgnoreCase))
+            {
+                requested = true;
+                return true;
+            }
+            if (token.StartsWith("QUIET=0|", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+            return false;
         }
 
         private static bool ProcessExists(int processId)

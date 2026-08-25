@@ -74,3 +74,15 @@ ColorCriticalA=255,132,157,255
 ColorCriticalB=255,70,112,255
 ColorOffline=255,116,145,255
 ColorSilent=128,190,220,220
+ColorQuiet=158,230,255,255
+
+; --- Glacier active-task quiet button ---------------------------------------
+QuietIdleText=128,190,220,150
+QuietIdleFill=5,42,88,70
+QuietIdleOutline=128,190,220,50
+QuietReadyText=166,247,255,245
+QuietReadyFill=5,54,105,118
+QuietReadyOutline=166,247,255,105
+QuietOnText=247,253,255,255
+QuietOnFill=40,156,218,155
+QuietOnOutline=166,247,255,220

@@ -4,6 +4,7 @@ param(
     [Parameter(Mandatory)] [string] $StatePath,
     [Parameter(Mandatory)] [string] $StopTokenPath,
     [Parameter(Mandatory)] [string] $SyncTokenPath,
+    [Parameter(Mandatory)] [string] $QuietTokenPath,
     [ValidateRange(10, 300)] [int] $ActiveIntervalSeconds = 20,
     [ValidateRange(3000, 60000)] [int] $TimeoutMs = 12000
 )
@@ -85,6 +86,8 @@ $arguments = @(
     (Quote-Argument $StopTokenPath)
     '--sync'
     (Quote-Argument $SyncTokenPath)
+    '--quiet'
+    (Quote-Argument $QuietTokenPath)
     '--interval'
     [string] $ActiveIntervalSeconds
     '--timeout'

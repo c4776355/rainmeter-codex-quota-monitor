@@ -97,6 +97,28 @@ local function applyQuotaPalette(remaining, quotaState)
     end
 end
 
+local function applyQuietControl(enabled, activeCount)
+    if enabled and activeCount > 0 then
+        setVariable("QuietLabel", "RESUME")
+        setVariable("QuietTextColor", "#QuietOnText#")
+        setVariable("QuietFill", "#QuietOnFill#")
+        setVariable("QuietOutline", "#QuietOnOutline#")
+        setVariable("QuietTip", "Resume 20-second polling and breathing for the active task")
+    elseif activeCount > 0 then
+        setVariable("QuietLabel", "QUIET")
+        setVariable("QuietTextColor", "#QuietReadyText#")
+        setVariable("QuietFill", "#QuietReadyFill#")
+        setVariable("QuietOutline", "#QuietReadyOutline#")
+        setVariable("QuietTip", "Pause remote polling and breathing for the current active task")
+    else
+        setVariable("QuietLabel", "QUIET")
+        setVariable("QuietTextColor", "#QuietIdleText#")
+        setVariable("QuietFill", "#QuietIdleFill#")
+        setVariable("QuietOutline", "#QuietIdleOutline#")
+        setVariable("QuietTip", "Available while a Codex task is active")
+    end
+end
+
 local function applyMode(mode, activeCount, nextSyncAt, now, state)
     local statusText = state.StatusText or mode
     local statusDetail = state.StatusDetail or "LOCAL WATCH"
@@ -139,6 +161,26 @@ local function applyMode(mode, activeCount, nextSyncAt, now, state)
         setVariable("PulseRadiusBase", "5.8")
         setVariable("PulseRadiusRange", "3.6")
         setVariable("ScanAlpha", "150")
+    elseif mode == "PAUSED" then
+        statusText = "QUIET"
+        if activeCount == 1 then
+            statusDetail = "1 LIVE TURN / MUTED"
+        else
+            statusDetail = string.format("%d LIVE TURNS / MUTED", activeCount)
+        end
+        syncLabel = "REMOTE QUERY"
+        syncCountdown = "MUTED"
+        setVariable("StatusColor", "#ColorQuiet#")
+        setVariable("PulseColor", "158,230,255")
+        setVariable("PulseMin", "15")
+        setVariable("PulseRange", "0")
+        setVariable("PulseSoftMin", "7")
+        setVariable("PulseSoftRange", "0")
+        setVariable("PanelWashMin", "0")
+        setVariable("PanelWashRange", "0")
+        setVariable("PulseRadiusBase", "5.4")
+        setVariable("PulseRadiusRange", "0")
+        setVariable("ScanAlpha", "0")
     elseif mode == "ERROR" then
         statusText = state.StatusText or "RETRYING"
         statusDetail = state.StatusDetail or "CHECK CONNECTION"
@@ -227,6 +269,7 @@ function Update()
 
     local maxWidth = number(SKIN:GetVariable("ProgressMaxWidth", "338"), 338)
     local activeCount = number(state.ActiveCount, 0)
+    local manualSilent = state.ManualSilent == "1" and not stale
     local nextSyncAt = number(state.NextSyncAt, 0)
     local resetEpoch = number(state.ResetEpoch, 0)
     local resetText = state.Reset or "--"
@@ -250,6 +293,7 @@ function Update()
 
     applyQuotaPalette(remaining, state.QuotaState or "UNKNOWN")
     applyMode(mode, activeCount, nextSyncAt, now, state)
+    applyQuietControl(manualSilent, activeCount)
 
     SKIN:Bang("!UpdateMeterGroup", "Dynamic")
     SKIN:Bang("!Redraw")
