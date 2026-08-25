@@ -1,5 +1,5 @@
 ; =============================================================================
-; CODEX QUOTA MONITOR - DYNAMIC GLACIER 1.4.1
+; CODEX QUOTA MONITOR - DYNAMIC GLACIER 1.5.0
 ; Glacier is now 380 x 248 px and task-aware. Aurora / Blueprint remain the
 ; compact 1.2 concepts. Save this file, then refresh the selected skin.
 ; =============================================================================

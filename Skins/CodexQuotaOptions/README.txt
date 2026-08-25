@@ -1,4 +1,4 @@
-CODEX QUOTA OPTIONS 1.4.1
+CODEX QUOTA OPTIONS 1.5.0
 
 Glacier is a 380 x 248 px task-aware quota panel:
   - immediate sync on task start

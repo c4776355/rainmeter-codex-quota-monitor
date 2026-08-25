@@ -878,7 +878,7 @@ namespace CodexQuota
                 throw new InvalidOperationException("Unable to start Codex App Server.");
             }
             stderrTask = process.StandardError.ReadToEndAsync();
-            WriteLine("{\"method\":\"initialize\",\"id\":0,\"params\":{\"clientInfo\":{\"name\":\"rainmeter_dynamic_quota_monitor\",\"title\":\"Rainmeter Dynamic Codex Quota Monitor\",\"version\":\"1.3.0\"}}}");
+            WriteLine("{\"method\":\"initialize\",\"id\":0,\"params\":{\"clientInfo\":{\"name\":\"rainmeter_dynamic_quota_monitor\",\"title\":\"Rainmeter Dynamic Codex Quota Monitor\",\"version\":\"1.5.0\"}}}");
 
             DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
             while (DateTime.UtcNow < deadline)

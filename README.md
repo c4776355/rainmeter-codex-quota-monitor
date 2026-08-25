@@ -26,7 +26,7 @@ An unofficial, task-aware Rainmeter dashboard for viewing the quota reported by 
 
 ## Install
 
-1. Download `CodexQuotaOptions_1.4.1.rmskin` from the latest GitHub Release.
+1. Download `CodexQuotaOptions_1.5.0.rmskin` from the latest GitHub Release.
 2. Open the package with Rainmeter Skin Installer.
 3. Load `CodexQuotaOptions\Glacier\Glacier.ini` if it is not loaded automatically.
 
@@ -70,7 +70,7 @@ The dynamic-state UI logic is in `DynamicPanel.lua`; the event listener is in `C
 From Windows PowerShell:
 
 ```powershell
-.\Build-Release.ps1 -Version 1.4.1
+.\Build-Release.ps1 -Version 1.5.0
 ```
 
 This compiles the native listener, creates the `.rmskin` package in `dist`, and writes `SHA256SUMS.txt`. Generated executables and packages are intentionally excluded from source control.
