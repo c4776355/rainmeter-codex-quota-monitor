@@ -1,9 +1,11 @@
-CODEX QUOTA OPTIONS 1.4.1
+CODEX QUOTA OPTIONS 1.5.0
 
 Glacier is a 380 x 248 px task-aware quota panel:
   - immediate sync on task start
   - one query every 20 seconds while active
   - final sync and fully static SILENT mode after completion
+  - matched TOP and QUIET / RESUME controls on the bottom row
+  - active-task quiet state survives skin and listener restarts
   - highlighted reset countdown with large two-line restore date/time
   - centered lower detail cells and balanced main quota spacing
   - remaining percentage finalized at Y=38

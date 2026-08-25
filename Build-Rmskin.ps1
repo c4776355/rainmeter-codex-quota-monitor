@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [string] $SourceRoot = $PSScriptRoot,
-    [string] $OutputFile = (Join-Path $PSScriptRoot 'CodexQuotaOptions_1.4.1.rmskin')
+    [string] $OutputFile = (Join-Path $PSScriptRoot 'CodexQuotaOptions_1.5.0.rmskin')
 )
 
 $ErrorActionPreference = 'Stop'

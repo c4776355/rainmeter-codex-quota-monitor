@@ -18,12 +18,12 @@ jobs:
 
       - name: Build release package
         shell: powershell
-        run: .\Build-Release.ps1 -Version 1.4.1
+        run: .\Build-Release.ps1 -Version 1.5.0
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CodexQuotaOptions-1.4.1
+          name: CodexQuotaOptions-1.5.0
           path: |
             dist/*.rmskin
             dist/SHA256SUMS.txt
