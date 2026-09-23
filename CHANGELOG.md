@@ -13,6 +13,7 @@
 - The display no longer switches to the weekly percentage after the 5-hour pool resets. Pools are now identified by `windowDurationMins` instead of whichever window has less remaining quota.
 - The percentage, progress bar, reset countdown, restore date, and cycle caption now always come from the same selected pool.
 - Raised the quota-pool heading and centered both pool labels horizontally and vertically in the selector pill.
+- Removed the divider below the pool selector and moved the pill and its centered label down by three logical pixels.
 
 ### Verification
 
