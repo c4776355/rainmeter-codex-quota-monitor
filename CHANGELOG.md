@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+No changes yet.
+
+## 1.6.0 - 2026-09-23
+
 ### Added
 
 - Added a persistent `5 HOURS / 1 WEEK` quota-pool selector to Glacier's existing pool card.

@@ -27,7 +27,7 @@
 
 ## 安装
 
-1. 从最新 GitHub Release 下载 `CodexQuotaOptions_1.5.0.rmskin`。
+1. 从最新 GitHub Release 下载 `CodexQuotaOptions_1.6.0.rmskin`。
 2. 使用 Rainmeter Skin Installer 打开安装包。
 3. 如未自动加载，请加载 `CodexQuotaOptions\Glacier\Glacier.ini`。
 
@@ -73,7 +73,7 @@ Skins\CodexQuotaOptions\@Resources\Variables.inc
 在 Windows PowerShell 中运行：
 
 ```powershell
-.\Build-Release.ps1 -Version 1.5.0
+.\Build-Release.ps1 -Version 1.6.0
 .\Tests\Test-QuotaPoolSelection.ps1
 ```
 

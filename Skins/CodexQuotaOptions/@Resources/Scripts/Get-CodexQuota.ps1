@@ -137,7 +137,7 @@ try {
             clientInfo = @{
                 name = 'rainmeter_quota_monitor'
                 title = 'Rainmeter Codex Quota Monitor'
-                version = '1.1.0'
+                version = '1.6.0'
             }
         }
     } | ConvertTo-Json -Compress -Depth 8
