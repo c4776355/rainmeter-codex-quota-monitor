@@ -24,11 +24,13 @@ namespace CodexQuota
                     Required(options, "stop"),
                     Required(options, "sync"),
                     Required(options, "quiet"),
+                    Required(options, "pool"),
                     Value(options, "sessions", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex", "sessions")),
                     Integer(options, "interval", 20),
                     Integer(options, "timeout", 12000),
                     Integer(options, "rainmeter-pid", 0),
-                    Value(options, "codex", null));
+                    Value(options, "codex", null),
+                    Value(options, "default-pool", "FIVE_HOUR"));
                 agent.Run();
                 return 0;
             }
@@ -86,18 +88,23 @@ namespace CodexQuota
             "ActiveCount", "NextSyncAt", "LastSyncAt", "LastUpdated", "Remaining", "Used",
             "Window", "Reset", "ResetEpoch", "Plan", "Credits", "LimitId", "Aux",
             "QuotaState", "LimitError", "LastError", "ConsecutiveErrors", "ManualSilent",
-            "LastSyncRequestToken", "LastQuietRequestToken"
+            "PoolMode", "SelectedPool", "PoolFallback",
+            "FiveHourRemaining", "FiveHourUsed", "FiveHourWindow", "FiveHourReset", "FiveHourResetEpoch",
+            "WeeklyRemaining", "WeeklyUsed", "WeeklyWindow", "WeeklyReset", "WeeklyResetEpoch",
+            "LastSyncRequestToken", "LastQuietRequestToken", "LastPoolRequestToken"
         };
 
         private readonly string statePath;
         private readonly string stopTokenPath;
         private readonly string syncTokenPath;
         private readonly string quietTokenPath;
+        private readonly string poolTokenPath;
         private readonly string sessionsRoot;
         private readonly int intervalSeconds;
         private readonly int timeoutMs;
         private readonly int rainmeterPid;
         private readonly string codexPath;
+        private readonly string defaultPoolMode;
         private readonly Dictionary<string, string> state = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, long> fileOffsets = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> activeTurns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -106,6 +113,7 @@ namespace CodexQuota
         private bool pendingImmediateSync;
         private bool pendingFinalSync;
         private bool manualSilent;
+        private string quotaPoolMode;
         private bool baselineScan;
         private readonly long bootTimeUnix;
 
@@ -114,21 +122,25 @@ namespace CodexQuota
             string stopTokenPath,
             string syncTokenPath,
             string quietTokenPath,
+            string poolTokenPath,
             string sessionsRoot,
             int intervalSeconds,
             int timeoutMs,
             int rainmeterPid,
-            string codexPath)
+            string codexPath,
+            string defaultPoolMode)
         {
             this.statePath = statePath;
             this.stopTokenPath = stopTokenPath;
             this.syncTokenPath = syncTokenPath;
             this.quietTokenPath = quietTokenPath;
+            this.poolTokenPath = poolTokenPath;
             this.sessionsRoot = Path.GetFullPath(sessionsRoot);
             this.intervalSeconds = Math.Max(10, Math.Min(300, intervalSeconds));
             this.timeoutMs = Math.Max(3000, Math.Min(60000, timeoutMs));
             this.rainmeterPid = rainmeterPid;
             this.codexPath = codexPath;
+            this.defaultPoolMode = NormalizePoolMode(defaultPoolMode);
             bootTimeUnix = UnixNow() - (long)(NativeMethods.GetTickCount64() / 1000UL);
             InitializeState();
         }
@@ -156,6 +168,7 @@ namespace CodexQuota
                     string initialStopToken = ReadToken(stopTokenPath);
                     string lastSyncToken = Get("LastSyncRequestToken", "--");
                     string lastQuietToken = Get("LastQuietRequestToken", "--");
+                    string lastPoolToken = Get("LastPoolRequestToken", "--");
                     Set("Mode", "STARTING");
                     Set("StatusText", "STARTING");
                     Set("StatusDetail", "SCANNING TASKS");
@@ -218,6 +231,15 @@ namespace CodexQuota
                                 ApplyQuietRequest(currentQuietToken);
                             }
 
+                            bool poolSync = false;
+                            string currentPoolToken = ReadToken(poolTokenPath);
+                            if (!String.Equals(currentPoolToken, lastPoolToken, StringComparison.Ordinal))
+                            {
+                                lastPoolToken = currentPoolToken;
+                                Set("LastPoolRequestToken", currentPoolToken);
+                                poolSync = ApplyPoolRequest(currentPoolToken);
+                            }
+
                             if (manualSilent && activeTurns.Count == 0)
                             {
                                 manualSilent = false;
@@ -225,7 +247,11 @@ namespace CodexQuota
                                 SetModeFromActivity();
                             }
 
-                            if (pendingFinalSync && activeTurns.Count == 0)
+                            if (poolSync)
+                            {
+                                SyncQuota("POOL SWITCH");
+                            }
+                            else if (pendingFinalSync && activeTurns.Count == 0)
                             {
                                 pendingFinalSync = false;
                                 pendingImmediateSync = false;
@@ -318,8 +344,12 @@ namespace CodexQuota
         {
             Dictionary<string, string> existing = ReadKeyValueFile(statePath);
             string currentQuietToken = ReadToken(quietTokenPath);
+            string currentPoolToken = ReadToken(poolTokenPath);
             string previousQuietToken;
             string previousManualSilent;
+            string existingPoolMode;
+            string previousPoolToken;
+            string requestedPoolMode;
             bool quietRequested;
             bool hasQuietRequest = TryParseQuietRequest(currentQuietToken, out quietRequested);
             bool quietRequestPending = !existing.TryGetValue("LastQuietRequestToken", out previousQuietToken) ||
@@ -328,7 +358,17 @@ namespace CodexQuota
                                    String.Equals(previousManualSilent, "1", StringComparison.Ordinal);
             manualSilent = hasQuietRequest && quietRequested && (quietRequestPending || wasManualSilent);
 
-            Set("Schema", "4");
+            quotaPoolMode = existing.TryGetValue("PoolMode", out existingPoolMode)
+                ? NormalizePoolMode(existingPoolMode)
+                : defaultPoolMode;
+            bool poolRequestPending = !existing.TryGetValue("LastPoolRequestToken", out previousPoolToken) ||
+                                      !String.Equals(currentPoolToken, previousPoolToken, StringComparison.Ordinal);
+            if (poolRequestPending && TryParsePoolRequest(currentPoolToken, out requestedPoolMode))
+            {
+                quotaPoolMode = requestedPoolMode;
+            }
+
+            Set("Schema", "5");
             Set("AgentPid", Process.GetCurrentProcess().Id.ToString(CultureInfo.InvariantCulture));
             Set("AgentHeartbeat", UnixNow().ToString(CultureInfo.InvariantCulture));
             Set("Mode", "STARTING");
@@ -352,13 +392,22 @@ namespace CodexQuota
             Set("LastError", "--");
             Set("ConsecutiveErrors", "0");
             Set("ManualSilent", manualSilent ? "1" : "0");
+            Set("PoolMode", quotaPoolMode);
+            Set("SelectedPool", "--");
+            Set("PoolFallback", "0");
+            ClearPoolCache("FiveHour");
+            ClearPoolCache("Weekly");
             Set("LastSyncRequestToken", "--");
             Set("LastQuietRequestToken", currentQuietToken);
+            Set("LastPoolRequestToken", currentPoolToken);
 
             string[] cachedKeys =
             {
                 "LastSyncAt", "LastUpdated", "Remaining", "Used", "Window", "Reset", "ResetEpoch",
-                "Plan", "Credits", "LimitId", "Aux", "QuotaState", "LimitError", "LastSyncRequestToken"
+                "Plan", "Credits", "LimitId", "Aux", "QuotaState", "LimitError", "LastSyncRequestToken",
+                "SelectedPool", "PoolFallback",
+                "FiveHourRemaining", "FiveHourUsed", "FiveHourWindow", "FiveHourReset", "FiveHourResetEpoch",
+                "WeeklyRemaining", "WeeklyUsed", "WeeklyWindow", "WeeklyReset", "WeeklyResetEpoch"
             };
             foreach (string key in cachedKeys)
             {
@@ -368,6 +417,8 @@ namespace CodexQuota
                     Set(key, value);
                 }
             }
+            MigrateLegacyPoolCache();
+            TryApplyCachedPoolSelection();
         }
 
         private void SetModeFromActivity()
@@ -429,6 +480,123 @@ namespace CodexQuota
             WriteState(false);
         }
 
+        private bool ApplyPoolRequest(string token)
+        {
+            string requested;
+            if (!TryParsePoolRequest(token, out requested))
+            {
+                return false;
+            }
+
+            quotaPoolMode = requested;
+            Set("PoolMode", quotaPoolMode);
+            bool applied = TryApplyCachedPoolSelection();
+            WriteState(false);
+            return !applied && !manualSilent;
+        }
+
+        private bool TryApplyCachedPoolSelection()
+        {
+            string preferredPrefix = quotaPoolMode == "WEEKLY" ? "Weekly" : "FiveHour";
+            string fallbackPrefix = quotaPoolMode == "WEEKLY" ? "FiveHour" : "Weekly";
+            string selectedPrefix = preferredPrefix;
+            bool fallback = false;
+
+            if (!HasPoolCache(selectedPrefix))
+            {
+                if (!HasPoolCache(fallbackPrefix))
+                {
+                    return false;
+                }
+                selectedPrefix = fallbackPrefix;
+                fallback = true;
+            }
+
+            Set("Remaining", Get(selectedPrefix + "Remaining", "--"));
+            Set("Used", Get(selectedPrefix + "Used", "--"));
+            Set("Window", Get(selectedPrefix + "Window", "--"));
+            Set("Reset", Get(selectedPrefix + "Reset", "--"));
+            Set("ResetEpoch", Get(selectedPrefix + "ResetEpoch", "0"));
+            Set("SelectedPool", selectedPrefix == "Weekly" ? "WEEKLY" : "FIVE_HOUR");
+            Set("PoolFallback", fallback ? "1" : "0");
+
+            string otherPrefix = selectedPrefix == "Weekly" ? "FiveHour" : "Weekly";
+            if (HasPoolCache(otherPrefix))
+            {
+                string otherName = otherPrefix == "Weekly" ? "WEEKLY" : "5-HOUR";
+                Set("Aux", String.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0} {1}% // {2}",
+                    otherName,
+                    Get(otherPrefix + "Remaining", "--"),
+                    Get(otherPrefix + "Window", "--")));
+            }
+            else
+            {
+                Set("Aux", "ONLY " + Get(selectedPrefix + "Window", "RATE WINDOW"));
+            }
+            return true;
+        }
+
+        private bool HasPoolCache(string prefix)
+        {
+            return Get(prefix + "Remaining", "--") != "--" && Get(prefix + "Window", "--") != "--";
+        }
+
+        private void ClearPoolCache(string prefix)
+        {
+            Set(prefix + "Remaining", "--");
+            Set(prefix + "Used", "--");
+            Set(prefix + "Window", "--");
+            Set(prefix + "Reset", "--");
+            Set(prefix + "ResetEpoch", "0");
+        }
+
+        private void MigrateLegacyPoolCache()
+        {
+            if (HasPoolCache("FiveHour") || HasPoolCache("Weekly"))
+            {
+                return;
+            }
+
+            string legacyWindow = Get("Window", "--");
+            string prefix = null;
+            if (legacyWindow.StartsWith("5H ", StringComparison.OrdinalIgnoreCase))
+            {
+                prefix = "FiveHour";
+            }
+            else if (legacyWindow.StartsWith("1W ", StringComparison.OrdinalIgnoreCase))
+            {
+                prefix = "Weekly";
+            }
+
+            if (prefix == null || Get("Remaining", "--") == "--")
+            {
+                return;
+            }
+
+            Set(prefix + "Remaining", Get("Remaining", "--"));
+            Set(prefix + "Used", Get("Used", "--"));
+            Set(prefix + "Window", legacyWindow);
+            Set(prefix + "Reset", Get("Reset", "--"));
+            Set(prefix + "ResetEpoch", Get("ResetEpoch", "0"));
+        }
+
+        private void StorePoolCache(string prefix, QuotaWindowSnapshot window)
+        {
+            if (window == null)
+            {
+                ClearPoolCache(prefix);
+                return;
+            }
+
+            Set(prefix + "Remaining", window.Remaining.ToString(CultureInfo.InvariantCulture));
+            Set(prefix + "Used", window.Used.ToString(CultureInfo.InvariantCulture));
+            Set(prefix + "Window", window.Window);
+            Set(prefix + "Reset", window.Reset);
+            Set(prefix + "ResetEpoch", window.ResetEpoch.ToString(CultureInfo.InvariantCulture));
+        }
+
         private void SyncQuota(string reason)
         {
             Set("Mode", "SYNCING");
@@ -444,7 +612,7 @@ namespace CodexQuota
                     appServer = new AppServerClient(ResolveCodexPath(), timeoutMs);
                 }
                 Dictionary<string, object> result = appServer.ReadRateLimits();
-                QuotaSnapshot quota = QuotaSnapshot.FromResult(result);
+                QuotaSnapshot quota = QuotaSnapshot.FromResult(result, quotaPoolMode);
                 ApplyQuota(quota);
                 long now = UnixNow();
                 Set("LastSyncAt", now.ToString(CultureInfo.InvariantCulture));
@@ -502,17 +670,18 @@ namespace CodexQuota
 
         private void ApplyQuota(QuotaSnapshot quota)
         {
-            Set("Remaining", quota.Remaining.ToString(CultureInfo.InvariantCulture));
-            Set("Used", quota.Used.ToString(CultureInfo.InvariantCulture));
-            Set("Window", quota.Window);
-            Set("Reset", quota.Reset);
-            Set("ResetEpoch", quota.ResetEpoch.ToString(CultureInfo.InvariantCulture));
             Set("Plan", quota.Plan);
             Set("Credits", quota.Credits);
             Set("LimitId", quota.LimitId);
-            Set("Aux", quota.Aux);
             Set("QuotaState", quota.QuotaState);
             Set("LimitError", quota.LimitError);
+            Set("PoolMode", quotaPoolMode);
+            StorePoolCache("FiveHour", quota.FiveHour);
+            StorePoolCache("Weekly", quota.Weekly);
+            if (!TryApplyCachedPoolSelection())
+            {
+                throw new InvalidOperationException("The selected quota pool is not available.");
+            }
         }
 
         private void StopAppServer()
@@ -747,6 +916,33 @@ namespace CodexQuota
                 return true;
             }
             return false;
+        }
+
+        private static bool TryParsePoolRequest(string token, out string requested)
+        {
+            requested = null;
+            if (String.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+            if (token.StartsWith("POOL=FIVE_HOUR|", StringComparison.OrdinalIgnoreCase))
+            {
+                requested = "FIVE_HOUR";
+                return true;
+            }
+            if (token.StartsWith("POOL=WEEKLY|", StringComparison.OrdinalIgnoreCase))
+            {
+                requested = "WEEKLY";
+                return true;
+            }
+            return false;
+        }
+
+        private static string NormalizePoolMode(string value)
+        {
+            return String.Equals(value, "WEEKLY", StringComparison.OrdinalIgnoreCase)
+                ? "WEEKLY"
+                : "FIVE_HOUR";
         }
 
         private static bool ProcessExists(int processId)
@@ -1036,8 +1232,12 @@ namespace CodexQuota
         public string Aux { get; private set; }
         public string QuotaState { get; private set; }
         public string LimitError { get; private set; }
+        public QuotaWindowSnapshot FiveHour { get; private set; }
+        public QuotaWindowSnapshot Weekly { get; private set; }
+        public string SelectedPool { get; private set; }
+        public bool PoolFallback { get; private set; }
 
-        public static QuotaSnapshot FromResult(Dictionary<string, object> result)
+        public static QuotaSnapshot FromResult(Dictionary<string, object> result, string poolMode)
         {
             Dictionary<string, object> snapshot = null;
             object value;
@@ -1074,13 +1274,27 @@ namespace CodexQuota
                 throw new InvalidOperationException("The Codex quota response did not contain a rate-limit window.");
             }
 
-            windows.Sort(delegate(WindowInfo left, WindowInfo right)
+            WindowInfo fiveHour;
+            WindowInfo weekly;
+            ClassifyWindows(windows, out fiveHour, out weekly);
+
+            bool requestWeekly = String.Equals(poolMode, "WEEKLY", StringComparison.OrdinalIgnoreCase);
+            WindowInfo selected = requestWeekly ? weekly : fiveHour;
+            bool poolFallback = false;
+            if (selected == null)
             {
-                int remaining = left.Remaining.CompareTo(right.Remaining);
-                return remaining != 0 ? remaining : right.DurationMinutes.CompareTo(left.DurationMinutes);
-            });
-            WindowInfo selected = windows[0];
-            WindowInfo other = windows.Count > 1 ? windows[1] : null;
+                selected = requestWeekly ? fiveHour : weekly;
+                poolFallback = true;
+            }
+            if (selected == null)
+            {
+                throw new InvalidOperationException("The Codex quota response did not contain a usable rate-limit window.");
+            }
+
+            string selectedPool = Object.ReferenceEquals(selected, weekly) ? "WEEKLY" : "FIVE_HOUR";
+            WindowInfo other = selectedPool == "WEEKLY" ? fiveHour : weekly;
+            QuotaWindowSnapshot fiveHourSnapshot = ToSnapshot(fiveHour);
+            QuotaWindowSnapshot weeklySnapshot = ToSnapshot(weekly);
 
             string plan = StringValue(snapshot, "planType", "UNKNOWN").ToUpperInvariant();
             string limitId = StringValue(snapshot, "limitId", "CODEX").ToUpperInvariant();
@@ -1123,11 +1337,89 @@ namespace CodexQuota
                 Credits = credits,
                 LimitId = limitId,
                 Aux = other != null
-                    ? String.Format(CultureInfo.InvariantCulture, "{0} {1}% // {2}", other.Name, other.Remaining, WindowLabel(other.DurationMinutes))
+                    ? String.Format(
+                        CultureInfo.InvariantCulture,
+                        "{0} {1}% // {2}",
+                        Object.ReferenceEquals(other, weekly) ? "WEEKLY" : "5-HOUR",
+                        other.Remaining,
+                        WindowLabel(other.DurationMinutes))
                     : selected.Name + " // " + limitId,
                 QuotaState = reached == null ? "ONLINE" : "LIMITED",
-                LimitError = reached ?? "--"
+                LimitError = reached ?? "--",
+                FiveHour = fiveHourSnapshot,
+                Weekly = weeklySnapshot,
+                SelectedPool = selectedPool,
+                PoolFallback = poolFallback
             };
+        }
+
+        private static void ClassifyWindows(List<WindowInfo> windows, out WindowInfo fiveHour, out WindowInfo weekly)
+        {
+            fiveHour = windows.Find(delegate(WindowInfo item) { return item.DurationMinutes == 300; });
+            weekly = windows.Find(delegate(WindowInfo item) { return item.DurationMinutes == 10080; });
+
+            List<WindowInfo> ordered = new List<WindowInfo>(windows);
+            ordered.Sort(delegate(WindowInfo left, WindowInfo right)
+            {
+                long leftDuration = left.DurationMinutes > 0 ? left.DurationMinutes : Int64.MaxValue;
+                long rightDuration = right.DurationMinutes > 0 ? right.DurationMinutes : Int64.MaxValue;
+                return leftDuration.CompareTo(rightDuration);
+            });
+
+            if (ordered.Count >= 2)
+            {
+                if (fiveHour == null)
+                {
+                    foreach (WindowInfo candidate in ordered)
+                    {
+                        if (!Object.ReferenceEquals(candidate, weekly))
+                        {
+                            fiveHour = candidate;
+                            break;
+                        }
+                    }
+                }
+                if (weekly == null)
+                {
+                    for (int index = ordered.Count - 1; index >= 0; index--)
+                    {
+                        WindowInfo candidate = ordered[index];
+                        if (!Object.ReferenceEquals(candidate, fiveHour))
+                        {
+                            weekly = candidate;
+                            break;
+                        }
+                    }
+                }
+                return;
+            }
+
+            WindowInfo only = ordered[0];
+            if (fiveHour == null && weekly == null)
+            {
+                if (only.DurationMinutes >= 1440)
+                {
+                    weekly = only;
+                }
+                else
+                {
+                    fiveHour = only;
+                }
+            }
+        }
+
+        private static QuotaWindowSnapshot ToSnapshot(WindowInfo window)
+        {
+            if (window == null)
+            {
+                return null;
+            }
+            return new QuotaWindowSnapshot(
+                window.Used,
+                window.Remaining,
+                WindowLabel(window.DurationMinutes),
+                window.ResetEpoch > 0 ? UnixEpochUtc.AddSeconds(window.ResetEpoch).ToLocalTime().ToString("MM-dd HH:mm", CultureInfo.InvariantCulture) : "--",
+                window.ResetEpoch);
         }
 
         private static string WindowLabel(long minutes)
@@ -1202,6 +1494,24 @@ namespace CodexQuota
                 object value;
                 return dictionary.TryGetValue(key, out value) && value != null ? Convert.ToInt64(value, CultureInfo.InvariantCulture) : 0L;
             }
+        }
+    }
+
+    internal sealed class QuotaWindowSnapshot
+    {
+        public int Used { get; private set; }
+        public int Remaining { get; private set; }
+        public string Window { get; private set; }
+        public string Reset { get; private set; }
+        public long ResetEpoch { get; private set; }
+
+        public QuotaWindowSnapshot(int used, int remaining, string window, string reset, long resetEpoch)
+        {
+            Used = used;
+            Remaining = remaining;
+            Window = window;
+            Reset = reset;
+            ResetEpoch = resetEpoch;
         }
     }
 

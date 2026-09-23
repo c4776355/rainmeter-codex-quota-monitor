@@ -3,7 +3,10 @@ param(
     [ValidateRange(3000, 60000)]
     [int] $TimeoutMs = 12000,
 
-    [string] $CodexPath
+    [string] $CodexPath,
+
+    [ValidateSet('FIVE_HOUR', 'WEEKLY')]
+    [string] $QuotaPool = 'FIVE_HOUR'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -205,11 +208,31 @@ try {
         throw 'The Codex quota response did not contain a rate-limit window.'
     }
 
-    # Display the most constrained active window when more than one is present.
-    $selected = $windows |
-        Sort-Object -Property @{ Expression = { $_.Remaining }; Ascending = $true },
-                               @{ Expression = { $_.Duration }; Descending = $true } |
-        Select-Object -First 1
+    # Identify pools by duration. Selecting the lowest remaining percentage
+    # makes the display jump to the weekly pool whenever the 5-hour pool resets.
+    $ordered = @($windows | Sort-Object -Property @{ Expression = { if ($null -eq $_.Duration -or $_.Duration -le 0) { [long]::MaxValue } else { $_.Duration } }; Ascending = $true })
+    $fiveHour = $windows | Where-Object { $_.Duration -eq 300 } | Select-Object -First 1
+    $weekly = $windows | Where-Object { $_.Duration -eq 10080 } | Select-Object -First 1
+    if ($ordered.Count -ge 2) {
+        if ($null -eq $fiveHour) {
+            $fiveHour = $ordered |
+                Where-Object { -not [object]::ReferenceEquals($_, $weekly) } |
+                Select-Object -First 1
+        }
+        if ($null -eq $weekly) {
+            $weekly = $ordered |
+                Where-Object { -not [object]::ReferenceEquals($_, $fiveHour) } |
+                Select-Object -Last 1
+        }
+    }
+    elseif ($ordered.Count -eq 1 -and $null -eq $fiveHour -and $null -eq $weekly) {
+        if ($ordered[0].Duration -ge 1440) { $weekly = $ordered[0] } else { $fiveHour = $ordered[0] }
+    }
+
+    $selected = if ($QuotaPool -eq 'WEEKLY') { $weekly } else { $fiveHour }
+    if ($null -eq $selected) {
+        $selected = if ($QuotaPool -eq 'WEEKLY') { $fiveHour } else { $weekly }
+    }
     $other = $windows | Where-Object { $_.Name -ne $selected.Name } | Select-Object -First 1
 
     $windowLabel = Get-WindowLabel $selected.Duration

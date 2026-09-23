@@ -11,6 +11,7 @@ An unofficial, task-aware Rainmeter dashboard for viewing the quota reported by 
 - Refreshes immediately when a Codex task starts, then every 20 seconds while a task remains active.
 - Performs one final refresh on completion and enters a static `SILENT` state with no remote polling.
 - Adds a bottom-row `QUIET / RESUME` control beside `TOP OFF / TOP ON` to pause polling and breathing during an active task.
+- Keeps the 5-hour pool selected across resets and adds a persistent `5 HOURS / 1 WEEK` selector in the quota-pool card.
 - Shows remaining quota, reset countdown, restore date and time, plan, and active-query countdown.
 - Uses a full-edge breathing animation only while active or syncing.
 - Includes a persistent `TOP OFF / TOP ON` switch for normal or stay-topmost window behavior.
@@ -46,6 +47,8 @@ The lightweight native listener watches local task lifecycle events and reuses a
 
 The `QUIET` button is scoped to the current active-task period. `RESUME` performs an immediate refresh and restores the 20-second cadence; when the last active task ends, quiet mode clears automatically and the normal final snapshot runs. If the skin or listener restarts while that task is still active, the applied quiet state is restored without replaying an already-consumed stale token.
 
+Click the `5 HOURS / 1 WEEK` pool pill to change which quota window drives the percentage, progress bar, countdown, and restore date. The listener identifies windows by `windowDurationMins`, caches both values from each normal response, and switches the local view without making another quota request. The selection survives skin and listener restarts. If the account returns only one window, the panel shows that window with a fallback-colored selector instead of mislabeling it.
+
 ## Privacy
 
 - Reads local task event files under `%USERPROFILE%\.codex\sessions` to detect task start, completion, or abort events.
@@ -71,9 +74,10 @@ From Windows PowerShell:
 
 ```powershell
 .\Build-Release.ps1 -Version 1.5.0
+.\Tests\Test-QuotaPoolSelection.ps1
 ```
 
-This compiles the native listener, creates the `.rmskin` package in `dist`, and writes `SHA256SUMS.txt`. Generated executables and packages are intentionally excluded from source control.
+The first command compiles the native listener, creates the `.rmskin` package in `dist`, and writes `SHA256SUMS.txt`. The second runs the quota-pool regression suite. Generated executables and packages are intentionally excluded from source control.
 
 ## Disclaimer
 

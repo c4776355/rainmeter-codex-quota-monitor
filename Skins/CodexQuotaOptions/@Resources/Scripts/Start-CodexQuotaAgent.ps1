@@ -5,6 +5,8 @@ param(
     [Parameter(Mandatory)] [string] $StopTokenPath,
     [Parameter(Mandatory)] [string] $SyncTokenPath,
     [Parameter(Mandatory)] [string] $QuietTokenPath,
+    [Parameter(Mandatory)] [string] $PoolTokenPath,
+    [ValidateSet('FIVE_HOUR', 'WEEKLY')] [string] $DefaultPoolMode = 'FIVE_HOUR',
     [ValidateRange(10, 300)] [int] $ActiveIntervalSeconds = 20,
     [ValidateRange(3000, 60000)] [int] $TimeoutMs = 12000
 )
@@ -88,6 +90,10 @@ $arguments = @(
     (Quote-Argument $SyncTokenPath)
     '--quiet'
     (Quote-Argument $QuietTokenPath)
+    '--pool'
+    (Quote-Argument $PoolTokenPath)
+    '--default-pool'
+    $DefaultPoolMode
     '--interval'
     [string] $ActiveIntervalSeconds
     '--timeout'

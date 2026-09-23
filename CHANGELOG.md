@@ -2,7 +2,16 @@
 
 ## Unreleased
 
-No changes yet.
+### Added
+
+- Added a persistent `5 HOURS / 1 WEEK` quota-pool selector to Glacier's existing pool card.
+- Cached both returned quota windows so switching pools is local and does not add a quota request or disturb active-task quiet mode.
+- Added regression coverage for a freshly reset 5-hour pool, reversed `primary` / `secondary` order, and single-window fallback.
+
+### Fixed
+
+- The display no longer switches to the weekly percentage after the 5-hour pool resets. Pools are now identified by `windowDurationMins` instead of whichever window has less remaining quota.
+- The percentage, progress bar, reset countdown, restore date, and cycle caption now always come from the same selected pool.
 
 ## 1.5.0 - 2026-08-25
 

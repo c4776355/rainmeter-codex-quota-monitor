@@ -11,6 +11,9 @@ RefreshSeconds=300
 ; Idle mode performs no remote quota queries.
 ActiveRefreshSeconds=20
 CommandTimeoutMs=12000
+; Initial quota pool for a new installation. The in-panel button persists later choices.
+; Allowed values: FIVE_HOUR or WEEKLY.
+DefaultQuotaPool=FIVE_HOUR
 
 ; Windows 11 system typeface with an Apple-like neutral appearance.
 ; Its zero is unslashed. Change both values to any installed typeface.
@@ -86,3 +89,10 @@ QuietReadyOutline=166,247,255,105
 QuietOnText=247,253,255,255
 QuietOnFill=40,156,218,155
 QuietOnOutline=166,247,255,220
+
+; --- Glacier quota-pool selector -------------------------------------------
+PoolText=213,244,255,255
+PoolFill=8,58,112,126
+PoolOutline=166,247,255,118
+PoolFallbackText=255,221,111,255
+PoolFallbackOutline=255,221,111,155
