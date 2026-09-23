@@ -38,7 +38,7 @@ Glacier starts in the normal window layer (`TOP OFF`), allowing games and other 
 | State | Remote refresh | Animation |
 | --- | --- | --- |
 | `TASK ACTIVE` | Immediately, then every 20 seconds | Breathing and scan effects |
-| `QUIET` | None until resumed or the task ends | Static; task monitoring stays active |
+| `QUIET` | No scheduled polling; manual refresh remains available | Static; task monitoring stays active |
 | `SYNCING` | One request in progress | Stronger breathing |
 | `SILENT` | None | Static |
 | Manual `SYNC` | One request | Sync animation |
@@ -47,7 +47,7 @@ The lightweight native listener watches local task lifecycle events and reuses a
 
 The `QUIET` button is scoped to the current active-task period. `RESUME` performs an immediate refresh and restores the 20-second cadence; when the last active task ends, quiet mode clears automatically and the normal final snapshot runs. If the skin or listener restarts while that task is still active, the applied quiet state is restored without replaying an already-consumed stale token.
 
-Click the `5 HOURS / 1 WEEK` pool pill to change which quota window drives the percentage, progress bar, countdown, and restore date. The listener identifies windows by `windowDurationMins`, caches both values from each normal response, and switches the local view without making another quota request. The selection survives skin and listener restarts. If the account returns only one window, the panel shows that window with a fallback-colored selector instead of mislabeling it.
+Click the `5 HOURS / 1 WEEK` pool pill to change which quota window drives the percentage, progress bar, countdown, and restore date. The listener identifies windows by `windowDurationMins`, immediately shows the selected pool's cached values, then makes one fresh quota request for each click. In `QUIET`, this is a one-time refresh and quiet mode resumes afterward; during an active task, the next scheduled query is 20 seconds after the refresh. The selection survives skin and listener restarts. If the account returns only one window, the panel shows that window with a fallback-colored selector instead of mislabeling it.
 
 ## Privacy
 

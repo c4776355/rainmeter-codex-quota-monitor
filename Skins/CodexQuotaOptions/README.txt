@@ -7,7 +7,8 @@ Glacier is a 380 x 248 px task-aware quota panel:
   - matched TOP and QUIET / RESUME controls on the bottom row
   - active-task quiet state survives skin and listener restarts
   - persistent 5 HOURS / 1 WEEK selector in the quota-pool card
-  - local cached switching with no extra quota request
+  - immediate cached switching plus one fresh quota query per click
+  - pool-click refresh preserves quiet mode after the one-time query
   - highlighted reset countdown with large two-line restore date/time
   - centered lower detail cells and balanced main quota spacing
   - remaining percentage finalized at Y=38

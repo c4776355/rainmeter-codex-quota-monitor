@@ -5,13 +5,20 @@
 ### Added
 
 - Added a persistent `5 HOURS / 1 WEEK` quota-pool selector to Glacier's existing pool card.
-- Cached both returned quota windows so switching pools is local and does not add a quota request or disturb active-task quiet mode.
+- Cached both returned quota windows for an immediate display change, followed by a fresh quota request on each pool-button click. A refresh while quiet returns to quiet mode after completion.
 - Added regression coverage for a freshly reset 5-hour pool, reversed `primary` / `secondary` order, and single-window fallback.
 
 ### Fixed
 
 - The display no longer switches to the weekly percentage after the 5-hour pool resets. Pools are now identified by `windowDurationMins` instead of whichever window has less remaining quota.
 - The percentage, progress bar, reset countdown, restore date, and cycle caption now always come from the same selected pool.
+- Raised the quota-pool heading and centered both pool labels horizontally and vertically in the selector pill.
+
+### Verification
+
+- Live Rainmeter meter bounds confirmed that both `5 HOURS` and `1 WEEK` share the pill's center, with the quota-pool heading raised by three logical pixels.
+- Pool clicks refreshed the quota in both active and quiet modes. Quiet mode resumed with no scheduled query during a further 22-second observation; active mode scheduled its next query 20 seconds after the click refresh.
+- Quota-pool regression tests and the native-agent build passed.
 
 ## 1.5.0 - 2026-08-25
 

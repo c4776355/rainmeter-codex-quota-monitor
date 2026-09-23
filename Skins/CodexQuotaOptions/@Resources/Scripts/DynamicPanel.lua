@@ -144,11 +144,11 @@ local function applyPoolControl(state)
     if fallback then
         setVariable("PoolTextColor", "#PoolFallbackText#")
         setVariable("PoolOutlineColor", "#PoolFallbackOutline#")
-        setVariable("PoolTip", string.format("Requested %s is unavailable; showing %s. Click to switch. %s", requestedLabel, label, other))
+        setVariable("PoolTip", string.format("Requested %s is unavailable; showing %s. Click to switch and refresh now. %s", requestedLabel, label, other))
     else
         setVariable("PoolTextColor", "#PoolText#")
         setVariable("PoolOutlineColor", "#PoolOutline#")
-        setVariable("PoolTip", string.format("Showing %s quota. Click for %s. %s", label, nextPool, other))
+        setVariable("PoolTip", string.format("Showing %s quota. Click for %s and refresh now. %s", label, nextPool, other))
     end
 end
 

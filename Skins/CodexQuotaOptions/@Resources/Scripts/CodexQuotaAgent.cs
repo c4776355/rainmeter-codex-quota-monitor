@@ -490,9 +490,11 @@ namespace CodexQuota
 
             quotaPoolMode = requested;
             Set("PoolMode", quotaPoolMode);
-            bool applied = TryApplyCachedPoolSelection();
+            TryApplyCachedPoolSelection();
             WriteState(false);
-            return !applied && !manualSilent;
+            // A pool click is an explicit one-time refresh, including while quiet.
+            // SyncQuota restores the current activity / quiet mode after the query.
+            return true;
         }
 
         private bool TryApplyCachedPoolSelection()
