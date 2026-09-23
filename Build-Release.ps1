@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string] $Version = '1.5.0',
+    [string] $Version = '1.6.0',
     [string] $OutputDirectory = (Join-Path $PSScriptRoot 'dist')
 )
 

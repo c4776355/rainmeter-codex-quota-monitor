@@ -119,6 +119,39 @@ local function applyQuietControl(enabled, activeCount)
     end
 end
 
+local function applyPoolControl(state)
+    local requested = state.PoolMode == "WEEKLY" and "WEEKLY" or "FIVE_HOUR"
+    local selected = state.SelectedPool == "WEEKLY" and "WEEKLY" or "FIVE_HOUR"
+    local fallback = state.PoolFallback == "1"
+    local other = state.Aux or "OTHER POOL UNAVAILABLE"
+    local label
+    local caption
+    local nextPool
+    local requestedLabel = requested == "WEEKLY" and "1 WEEK" or "5 HOURS"
+
+    if selected == "WEEKLY" then
+        label = "1 WEEK"
+        caption = "WEEKLY QUOTA CYCLE"
+        nextPool = "5-hour"
+    else
+        label = "5 HOURS"
+        caption = "5-HOUR QUOTA CYCLE"
+        nextPool = "weekly"
+    end
+
+    setVariable("PoolLabel", label)
+    setVariable("QuotaCycleCaption", caption)
+    if fallback then
+        setVariable("PoolTextColor", "#PoolFallbackText#")
+        setVariable("PoolOutlineColor", "#PoolFallbackOutline#")
+        setVariable("PoolTip", string.format("Requested %s is unavailable; showing %s. Click to switch and refresh now. %s", requestedLabel, label, other))
+    else
+        setVariable("PoolTextColor", "#PoolText#")
+        setVariable("PoolOutlineColor", "#PoolOutline#")
+        setVariable("PoolTip", string.format("Showing %s quota. Click for %s and refresh now. %s", label, nextPool, other))
+    end
+end
+
 local function applyMode(mode, activeCount, nextSyncAt, now, state)
     local statusText = state.StatusText or mode
     local statusDetail = state.StatusDetail or "LOCAL WATCH"
@@ -294,6 +327,7 @@ function Update()
     applyQuotaPalette(remaining, state.QuotaState or "UNKNOWN")
     applyMode(mode, activeCount, nextSyncAt, now, state)
     applyQuietControl(manualSilent, activeCount)
+    applyPoolControl(state)
 
     SKIN:Bang("!UpdateMeterGroup", "Dynamic")
     SKIN:Bang("!Redraw")

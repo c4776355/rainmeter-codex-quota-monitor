@@ -16,14 +16,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Test quota pool selection
+        shell: powershell
+        run: .\Tests\Test-QuotaPoolSelection.ps1
+
       - name: Build release package
         shell: powershell
-        run: .\Build-Release.ps1 -Version 1.5.0
+        run: .\Build-Release.ps1 -Version 1.6.0
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: CodexQuotaOptions-1.5.0
+          name: CodexQuotaOptions-1.6.0
           path: |
             dist/*.rmskin
             dist/SHA256SUMS.txt
@@ -33,4 +37,14 @@ jobs:
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create $env:GITHUB_REF_NAME dist/*.rmskin dist/SHA256SUMS.txt --verify-tag --generate-notes
+        run: |
+          $version = $env:GITHUB_REF_NAME.TrimStart('v')
+          $escapedVersion = [regex]::Escape($version)
+          $changelog = Get-Content -LiteralPath CHANGELOG.md -Raw
+          $releaseSection = [regex]::Match($changelog, "(?ms)^## $escapedVersion(?: - [^\r\n]+)?\r?\n(.*?)(?=^## |\z)")
+          if (-not $releaseSection.Success) {
+            throw "No changelog section found for $env:GITHUB_REF_NAME."
+          }
+          $notesPath = Join-Path $env:RUNNER_TEMP 'codex-quota-release-notes.md'
+          [System.IO.File]::WriteAllText($notesPath, $releaseSection.Groups[1].Value.Trim(), (New-Object System.Text.UTF8Encoding($false)))
+          gh release create $env:GITHUB_REF_NAME dist/*.rmskin dist/SHA256SUMS.txt --verify-tag --title $env:GITHUB_REF_NAME --notes-file $notesPath
